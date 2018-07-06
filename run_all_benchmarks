@@ -186,7 +186,7 @@ python - <<EOF
 import h5py
 
 total_work = 0
-for i in range(int(${NPROCS})):
+for i in range(int(${1})):
     time=open('RUN_{}/runtime'.format(i+1),'r')
     runtime=float(time.readline())
     total_work += 1./runtime
@@ -219,7 +219,7 @@ python - <<EOF
 import h5py
 
 total_work = 0
-for i in range(int(${NPROCS})):
+for i in range(int(${2})):
     time=open('RUN_{}/runtime'.format(i+1),'r')
     runtime=float(time.readline())
     total_work += 1./runtime
