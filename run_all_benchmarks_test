@@ -1,0 +1,266 @@
+#!/bin/bash
+set -e
+
+echo "RUNNING BENCHMARK WITH $1 PHYSICAL CORES AND $2 VIRTUAL CORES"
+echo
+
+mkdir pycbc_benchmark
+cd pycbc_benchmark
+mkdir log
+
+# SETUP FOR PYCBC BENCHMARK
+echo "Setting up PyCBC benchmark"
+echo
+curl -L https://raw.githubusercontent.com/ligo-cbc/pycbc-config/master/O2/bank/H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz > H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz 2> log/curl1.log
+curl -L https://losc.ligo.org/archive/data/O1/1126170624/L-L1_LOSC_4_V1-1126256640-4096.gwf > L-L1_LOSC_4_V1-1126256640-4096.gwf 2> log/curl2.log
+pycbc_coinc_bank2hdf --bank-file H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz --output-file H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.hdf &> log/bank2hdf.log
+export SCHEME=cpu
+
+# Use this if running the production benchmark
+#export NTEMPLATES=100000
+# Use this if just wanting to test the benchmark
+export NTEMPLATES=100
+
+# Run this after setting NTEMPLATES. If NTEMPLATES changes this must be rerun.
+pycbc_hdf5_splitbank --bank-file H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.hdf --templates-per-bank ${NTEMPLATES} --output-prefix H1L1-SPLITBANK_ --random-sort &> log/splitbank.log
+mv H1L1-SPLITBANK_0.hdf tmp.hdf
+rm -f H1L1-SPLITBANK_*hdf
+mv tmp.hdf H1L1-SPLITBANK_0.hdf
+
+export N_JOBS=$1
+
+echo "Running PyCBC benchmarks"
+echo
+# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
+export OMP_NUM_THREADS=1
+
+echo "Test 1 on ${1} cores"
+echo
+for IDX in $(seq 1 ${N_JOBS}); do pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTSEOB_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test1_${IDX}.log  & done
+
+wait
+
+# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
+export OMP_NUM_THREADS=1
+
+echo "Test 2 on ${1} cores"
+echo
+for IDX in $(seq 1 ${N_JOBS}); do pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<50' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTF2_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test2_${IDX}.log & done
+
+wait
+
+python - <<EOF
+import h5py, glob
+
+filelist = glob.glob('OUTPUTSEOB_*.hdf')
+assert(len(filelist) == ${N_JOBS})
+
+perf_tot = 0
+for f in filelist:
+    a = h5py.File(f,'r')
+    perf_tot += 1. / a['L1/search/run_time'][0]
+
+fp = open('no_hp_perf_num_1.dat', 'w')
+print >> fp, perf_tot
+fp.close()
+
+filelist = glob.glob('OUTPUTF2_*.hdf')
+assert(len(filelist) == ${N_JOBS})
+
+perf_tot = 0
+for f in filelist:
+    a = h5py.File(f,'r')
+    perf_tot += 1. / a['L1/search/run_time'][0]
+
+fp = open('no_hp_perf_num_2.dat', 'w')
+print >> fp, perf_tot
+fp.close()
+
+EOF
+
+export N_JOBS=$2
+
+rm -f *OUTPUT*
+
+# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
+export OMP_NUM_THREADS=1
+
+echo "Test 1 on ${2} cores"
+echo
+for IDX in $(seq 1 ${N_JOBS}); do pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTSEOB_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test3_${IDX}.log & done
+
+wait
+# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
+export OMP_NUM_THREADS=1
+
+echo "Test 2 on {2} cores"
+echo
+for IDX in $(seq 1 ${N_JOBS}); do pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<50' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTF2_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test4_${IDX}.log & done
+
+wait
+
+python - <<EOF
+import h5py, glob
+
+filelist = glob.glob('OUTPUTSEOB_*.hdf')
+assert(len(filelist) == ${N_JOBS})
+
+perf_tot = 0
+for f in filelist:
+    a = h5py.File(f,'r')
+    perf_tot += 1. / a['L1/search/run_time'][0]
+
+fp = open('w_hp_perf_num_1.dat', 'w')
+print >> fp, perf_tot
+fp.close()
+
+filelist = glob.glob('OUTPUTF2_*.hdf')
+assert(len(filelist) == ${N_JOBS})
+
+perf_tot = 0
+for f in filelist:
+    a = h5py.File(f,'r')
+    perf_tot += 1. / a['L1/search/run_time'][0]
+
+fp = open('w_hp_perf_num_2.dat', 'w')
+print >> fp, perf_tot
+fp.close()
+
+EOF
+
+cd ..
+
+mkdir waveform_benchmark
+cd waveform_benchmark
+
+echo "Setting up waveform benchmark"
+mkdir log
+git clone https://git.ligo.org/ian-harry/TD-wf-bench.git 2> log/gitclone.log
+cd TD-wf-bench
+# REMOVE THIS LINE
+mv cfgs_vsmall.dat cfgs_small.dat
+echo "Running waveform benchmark"
+echo
+# REMOVE SMALL FOR THE FULL BENCHMARK
+./wf_bench_small.sh $1
+echo
+./wf_bench_small.sh $2
+echo
+cd ../..
+
+mkdir lalinference_benchmark
+cd lalinference_benchmark
+echo "Setting up lalinference benchmark"
+# Generate an injection file
+lalapps_inspinj --gps-start-time 441417609 --gps-end-time 441417639 --m-distr componentMass --min-mass1 5 --min-mass2 5 --max-mass1 5 --max-mass2 5 --max-mtotal 10 --i-distr uniform --waveform IMRPhenomPv2pseudoFourPN --amp-order 0 --l-distr random --f-lower 20 --t-distr uniform --time-step 30 --disable-spin --o injections.xml --snr-distr volume --ifos H1,L1,V1 --ligo-fake-psd LALAdLIGO --virgo-fake-psd LALAdVirgo --min-snr 20 --max-snr 20 --ligo-start-freq 20 --virgo-start-freq 20
+
+#create directory needed to use the ROQ data and prepare necessary files
+mkdir ROQdata
+mkdir log
+# Not needed while we are not testing ROQ
+#lalinference_datadump --L1-flow 20.0 --approx IMRPhenomPv2pseudoFourPN --psdlength 1024 --V1-timeslide 0 --V1-cache LALSimAdVirgo --chirpmass-max 6.170374 --inj injections.xml --comp-max 21.9986477179 --adapt-temps  --srate 4096.0 --event 0 --V1-fhigh 2047.96875 --neff 500 --seglen 32.0 --L1-channel L1:LDAS-STRAIN --L1-fhigh 2047.96875 --H1-timeslide 0 --trigtime 441417609 --comp-min 1.49140053129 --psdstart 441416535.0 --H1-cache LALSimAdLIGO --progress --H1-channel H1:LDAS-STRAIN --V1-channel V1:h_16384Hz --tol 1.0  --disable-spin  --V1-flow 20.0 --fref 100 --H1-fhigh 2047.96875 --L1-cache LALSimAdLIGO --amporder 0 --randomseed 1829391048 --dataseed -8975086 --L1-timeslide 0 --q-min 0.125 --chirpmass-min 3.346569 --H1-flow 20.0 --outfile ROQdata/data-dump  --data-dump  --ifo V1  --ifo H1  --ifo L1  &> log/lidatadump.log
+#lalapps_compute_roq_weights -B /ROQ_data/IMRPhenomPv2/32s  -t 0.1  -T 0.000172895418228  --seglen 32.0  --fLow 20.0  --ifo V1  --fHigh 2047.96875  --data ROQdata/data-dumpV1-freqDataWithInjection.dat  --psd ROQdata/data-dumpV1-PSD.dat  --out ROQdata/ &> log/liroqweights1.dat
+#lalapps_compute_roq_weights -B /ROQ_data/IMRPhenomPv2/32s  -t 0.1  -T 0.000172895418228  --seglen 32.0  --fLow 20.0  --ifo L1  --fHigh 2047.96875  --data ROQdata/data-dumpL1-freqDataWithInjection.dat  --psd ROQdata/data-dumpL1-PSD.dat  --out ROQdata/ &> log/liroqweights2.dat
+#lalapps_compute_roq_weights -B /ROQ_data/IMRPhenomPv2/32s  -t 0.1  -T 0.000172895418228  --seglen 32.0  --fLow 20.0  --ifo H1  --fHigh 2047.96875  --data ROQdata/data-dumpH1-freqDataWithInjection.dat  --psd ROQdata/data-dumpH1-PSD.dat  --out ROQdata/ &> log/liroqweights3.dat
+
+echo "Running test on $1 cores"
+# USE THIS SETTING WHEN DOING A PRODUCTION BENCHMARK
+#export NSTEPS=100000
+
+# USE THIS SETTING IF WANTING TO TEST THE CODE IS FUNCTIONING
+export NSTEPS=200
+# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
+export OMP_NUM_THREADS=1
+TIMEFORMAT=%R
+
+mkdir TEST_${1}
+cd TEST_${1}
+
+for IDX in $(seq 1 ${1}); do
+mkdir RUN_${IDX}
+cd RUN_${IDX}
+{ time lalinference_bench --psdlength 1024 --psdstart 441416535.0 --seglen 32 --srate 4096.0 --trigtime 441417609 --ifo H1 --H1-channel H1:LDAS-STRAIN --H1-cache LALSimAdLIGO --dataseed 1324 --chirpmass-max 6.170374 --chirpmass-min 3.346569 --q-min 0.125 --comp-max 21.9986477179 --comp-min 1.49140053129 --disable-spin --amporder 0 --fref 100 --inj ../../injections.xml --event 0 --H1-timeslide 0 --trigtime 441417609 --psdstart 441416535.0 --tol 1.0 --H1-flow 20.0 --H1-fhigh 2047.96875 --ntemps 8 --np 8 --nsteps 1 --skip 100 --approx IMRPhenomPv2pseudoFourPN --outfile samples.hdf5  --randomseed 1829391048 --L1-flow 20.0  --V1-timeslide 0 --V1-cache LALSimAdVirgo  --L1-channel L1:LDAS-STRAIN --L1-fhigh 2047.96875 --V1-channel V1:h_16384Hz --V1-fhigh 2047.96875  --V1-flow 20.0 --L1-cache LALSimAdLIGO --L1-timeslide 0 --ifo V1 --ifo L1 --no-detector-frame --Niter ${NSTEPS} &> logging; } 2> runtime &
+cd ..
+done
+wait
+
+python - <<EOF
+import h5py
+
+total_work = 0
+for i in range(int(${NPROCS})):
+    time=open('RUN_{}/runtime'.format(i+1),'r')
+    runtime=float(time.readline())
+    total_work += 1./runtime
+
+fp = open('../no_hp_benchmark.dat', 'w')
+print >> fp, total_work
+fp.close()
+
+EOF
+
+cd ..
+
+echo "Running test on $2 cores"
+# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
+export OMP_NUM_THREADS=1
+TIMEFORMAT=%R
+
+mkdir TEST_${2}
+cd TEST_${2}
+
+for IDX in $(seq 1 ${2}); do
+mkdir RUN_${IDX}
+cd RUN_${IDX}
+{ time lalinference_bench --psdlength 1024 --psdstart 441416535.0 --seglen 32 --srate 4096.0 --trigtime 441417609 --ifo H1 --H1-channel H1:LDAS-STRAIN --H1-cache LALSimAdLIGO --dataseed 1324 --chirpmass-max 6.170374 --chirpmass-min 3.346569 --q-min 0.125 --comp-max 21.9986477179 --comp-min 1.49140053129 --disable-spin --amporder 0 --fref 100 --inj ../../injections.xml --event 0 --H1-timeslide 0 --trigtime 441417609 --psdstart 441416535.0 --tol 1.0 --H1-flow 20.0 --H1-fhigh 2047.96875 --ntemps 8 --np 8 --nsteps 1 --skip 100 --approx IMRPhenomPv2pseudoFourPN --outfile samples.hdf5  --randomseed 1829391048 --L1-flow 20.0  --V1-timeslide 0 --V1-cache LALSimAdVirgo  --L1-channel L1:LDAS-STRAIN --L1-fhigh 2047.96875 --V1-channel V1:h_16384Hz --V1-fhigh 2047.96875  --V1-flow 20.0 --L1-cache LALSimAdLIGO --L1-timeslide 0 --ifo V1 --ifo L1 --no-detector-frame --Niter ${NSTEPS} &> logging; } 2> runtime &
+cd ..
+done
+wait
+
+python - <<EOF
+import h5py
+
+total_work = 0
+for i in range(int(${NPROCS})):
+    time=open('RUN_{}/runtime'.format(i+1),'r')
+    runtime=float(time.readline())
+    total_work += 1./runtime
+
+fp = open('../w_hp_benchmark.dat', 'w')
+print >> fp, total_work
+fp.close()
+
+EOF
+
+cd ..
+cd ..
+
+echo "SUMMARIZING"
+
+python - <<EOF
+pycbc_1A = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_1.dat')[()]
+pycbc_1B = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_2.dat')[()]
+pycbc_2A = numpy.loadtxt('pycbc_benchmark/w_hp_perf_num_1.dat')[()]
+pycbc_2B = numpy.loadtxt('pycbc_benchmark/w_hp_perf_num_2.dat')[()]
+
+waveform_1 = numpy.loadtxt("waveform_benchmark/TD-wf-bench/benchmark_${1}.dat")
+waveform_2 = numpy.loadtxt("waveform_benchmark/TD-wf-bench/benchmark_${2}.dat")
+
+lalinference_1 = numpy.loadtxt('lalinference_benchmark/no_hp_benchmark.dat')
+lalinference_2 = numpy.loadtxt('lalinference_benchmark/w_hp_benchmark.dat')
+
+print "THIS IS THE BIT THAT NEED FINALIZING. HERE ARE THE CURRENT NUMBERS"
+
+print "pycbc_1A", pycbc_1A
+print "pycbc_1B", pycbc_1B
+print "pycbc_2A", pycbc_2A
+print "pycbc_2B", pycbc_2B
+
+print "waveform_1", waveform_1
+print "waveform_2", waveform_2
+
+print "lalinference_1", lalinference_1
+print "lalinference_2", lalinference_2
+
+EOF
+
