@@ -238,6 +238,7 @@ cd ..
 echo "SUMMARIZING"
 
 python - <<EOF
+import numpy
 pycbc_1A = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_1.dat')[()]
 pycbc_1B = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_2.dat')[()]
 pycbc_2A = numpy.loadtxt('pycbc_benchmark/w_hp_perf_num_1.dat')[()]
