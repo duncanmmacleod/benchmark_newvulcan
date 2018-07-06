@@ -151,6 +151,7 @@ cd ../..
 mkdir lalinference_benchmark
 cd lalinference_benchmark
 echo "Setting up lalinference benchmark"
+echo
 # Generate an injection file
 lalapps_inspinj --gps-start-time 441417609 --gps-end-time 441417639 --m-distr componentMass --min-mass1 5 --min-mass2 5 --max-mass1 5 --max-mass2 5 --max-mtotal 10 --i-distr uniform --waveform IMRPhenomPv2pseudoFourPN --amp-order 0 --l-distr random --f-lower 20 --t-distr uniform --time-step 30 --disable-spin --o injections.xml --snr-distr volume --ifos H1,L1,V1 --ligo-fake-psd LALAdLIGO --virgo-fake-psd LALAdVirgo --min-snr 20 --max-snr 20 --ligo-start-freq 20 --virgo-start-freq 20
 
@@ -164,6 +165,7 @@ mkdir log
 #lalapps_compute_roq_weights -B /ROQ_data/IMRPhenomPv2/32s  -t 0.1  -T 0.000172895418228  --seglen 32.0  --fLow 20.0  --ifo H1  --fHigh 2047.96875  --data ROQdata/data-dumpH1-freqDataWithInjection.dat  --psd ROQdata/data-dumpH1-PSD.dat  --out ROQdata/ &> log/liroqweights3.dat
 
 echo "Running test on $1 cores"
+echo
 # USE THIS SETTING WHEN DOING A PRODUCTION BENCHMARK
 #export NSTEPS=100000
 
@@ -202,6 +204,7 @@ EOF
 cd ..
 
 echo "Running test on $2 cores"
+echo
 # This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
 export OMP_NUM_THREADS=1
 TIMEFORMAT=%R
@@ -236,6 +239,7 @@ cd ..
 cd ..
 
 echo "SUMMARIZING"
+echo
 
 python - <<EOF
 import numpy
