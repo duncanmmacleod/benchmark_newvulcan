@@ -17,7 +17,7 @@ pycbc_coinc_bank2hdf --bank-file H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-116317
 export SCHEME=cpu
 
 # Use this if running the production benchmark
-export NTEMPLATES=100000
+export NTEMPLATES=20000
 # Use this if just wanting to test the benchmark
 #export NTEMPLATES=100
 
