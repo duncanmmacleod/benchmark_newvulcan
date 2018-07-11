@@ -49,7 +49,7 @@ for IDX in $(seq 1 ${N_JOBS}); do pycbc_inspiral --sgchisq-snr-threshold 6.0 --s
 
 wait
 
-python - <<EOF
+/usr/bin/python2.7 - <<EOF
 import h5py, glob
 
 filelist = glob.glob('OUTPUTSEOB_*.hdf')
@@ -99,7 +99,7 @@ for IDX in $(seq 1 ${N_JOBS}); do pycbc_inspiral --sgchisq-snr-threshold 6.0 --s
 
 wait
 
-python - <<EOF
+/usr/bin/python2.7 - <<EOF
 import h5py, glob
 
 filelist = glob.glob('OUTPUTSEOB_*.hdf')
@@ -184,7 +184,7 @@ cd ..
 done
 wait
 
-python - <<EOF
+/usr/bin/python2.7 - <<EOF
 import h5py
 
 total_work = 0
@@ -218,7 +218,7 @@ cd ..
 done
 wait
 
-python - <<EOF
+/usr/bin/python2.7 - <<EOF
 import h5py
 
 total_work = 0
@@ -239,7 +239,7 @@ cd ..
 echo "SUMMARIZING"
 echo
 
-python - <<EOF
+/usr/bin/python2.7 - <<EOF
 import numpy
 pycbc_1A = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_1.dat')[()]
 pycbc_1B = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_2.dat')[()]
