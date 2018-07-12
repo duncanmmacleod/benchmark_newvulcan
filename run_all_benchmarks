@@ -17,7 +17,7 @@ curl -L https://losc.ligo.org/archive/data/O1/1126170624/L-L1_LOSC_4_V1-11262566
 export SCHEME=cpu
 
 # Use this if running the production benchmark
-export NTEMPLATES=20000
+export NTEMPLATES=15000
 # Use this if just wanting to test the benchmark
 #export NTEMPLATES=100
 
@@ -27,14 +27,14 @@ mv H1L1-SPLITBANK_0.hdf tmp.hdf
 rm -f H1L1-SPLITBANK_*hdf
 mv tmp.hdf H1L1-SPLITBANK_0.hdf
 
-export N_JOBS=$1
+export N_JOBS=$2
 
 echo "Running PyCBC benchmarks"
 echo
 # This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
 export OMP_NUM_THREADS=1
 
-echo "Test 1 on ${1} cores"
+echo "Test 1 on ${2} cores"
 echo
 for IDX in $(seq 1 ${N_JOBS}); do /usr/local/bin/pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTSEOB_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test1_${IDX}.log  & done
 
@@ -43,59 +43,9 @@ wait
 # This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
 export OMP_NUM_THREADS=1
 
-echo "Test 2 on ${1} cores"
-echo
-for IDX in $(seq 1 ${N_JOBS}); do /usr/local/bin/pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<50' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTF2_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test2_${IDX}.log & done
-
-wait
-
-/usr/bin/python2.7 - <<EOF
-import h5py, glob
-
-filelist = glob.glob('OUTPUTSEOB_*.hdf')
-assert(len(filelist) == ${N_JOBS})
-
-perf_tot = 0
-for f in filelist:
-    a = h5py.File(f,'r')
-    perf_tot += 1. / a['L1/search/run_time'][0]
-
-fp = open('no_hp_perf_num_1.dat', 'w')
-print >> fp, perf_tot
-fp.close()
-
-filelist = glob.glob('OUTPUTF2_*.hdf')
-assert(len(filelist) == ${N_JOBS})
-
-perf_tot = 0
-for f in filelist:
-    a = h5py.File(f,'r')
-    perf_tot += 1. / a['L1/search/run_time'][0]
-
-fp = open('no_hp_perf_num_2.dat', 'w')
-print >> fp, perf_tot
-fp.close()
-
-EOF
-
-export N_JOBS=$2
-
-rm -f *OUTPUT*
-
-# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
-export OMP_NUM_THREADS=1
-
-echo "Test 1 on ${2} cores"
-echo
-for IDX in $(seq 1 ${N_JOBS}); do /usr/local/bin/pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTSEOB_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test3_${IDX}.log & done
-
-wait
-# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
-export OMP_NUM_THREADS=1
-
 echo "Test 2 on ${2} cores"
 echo
-for IDX in $(seq 1 ${N_JOBS}); do /usr/local/bin/pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<50' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTF2_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test4_${IDX}.log & done
+for IDX in $(seq 1 ${N_JOBS}); do /usr/local/bin/pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<50' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTF2_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test2_${IDX}.log & done
 
 wait
 
@@ -123,6 +73,56 @@ for f in filelist:
     perf_tot += 1. / a['L1/search/run_time'][0]
 
 fp = open('w_hp_perf_num_2.dat', 'w')
+print >> fp, perf_tot
+fp.close()
+
+EOF
+
+export N_JOBS=$1
+
+rm -f *OUTPUT*
+
+# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
+export OMP_NUM_THREADS=1
+
+echo "Test 1 on ${1} cores"
+echo
+for IDX in $(seq 1 ${N_JOBS}); do /usr/local/bin/pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<4' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTSEOB_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test3_${IDX}.log & done
+
+wait
+# This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
+export OMP_NUM_THREADS=1
+
+echo "Test 2 on ${1} cores"
+echo
+for IDX in $(seq 1 ${N_JOBS}); do /usr/local/bin/pycbc_inspiral --sgchisq-snr-threshold 6.0 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" --pad-data 8 --strain-high-pass 15 --sample-rate 2048 --segment-length 512 --segment-start-pad 144 --segment-end-pad 16 --allow-zero-padding --taper-data 1 --psd-estimation median --psd-segment-length 16 --psd-segment-stride 8 --psd-inverse-length 16 --psd-num-segments 63 --autogating-threshold 100 --autogating-cluster 0.5 --autogating-width 0.25 --autogating-taper 0.25 --autogating-pad 16 --enable-bank-start-frequency  --low-frequency-cutoff 20 --approximant 'SPAtmplt:mtotal<50' 'SEOBNRv4_ROM:else' --order -1 --snr-threshold 5.5 --cluster-method window --cluster-window 1 --cluster-function symmetric --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" --newsnr-threshold 5 --filter-inj-only  --injection-window 4.5 --processing-scheme ${SCHEME} --injection-filter-rejector-chirp-time-window 5 --channel-name L1:GDS-CALIB_STRAIN --gps-start-time 1126258462 --gps-end-time 1126260462 --trig-start-time 1126258700 --trig-end-time 1126260000 --output OUTPUTF2_${IDX}.hdf --bank-file H1L1-SPLITBANK_0.hdf --frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf --channel-name L1:LOSC-STRAIN &> log/test4_${IDX}.log & done
+
+wait
+
+/usr/bin/python2.7 - <<EOF
+import h5py, glob
+
+filelist = glob.glob('OUTPUTSEOB_*.hdf')
+assert(len(filelist) == ${N_JOBS})
+
+perf_tot = 0
+for f in filelist:
+    a = h5py.File(f,'r')
+    perf_tot += 1. / a['L1/search/run_time'][0]
+
+fp = open('no_hp_perf_num_1.dat', 'w')
+print >> fp, perf_tot
+fp.close()
+
+filelist = glob.glob('OUTPUTF2_*.hdf')
+assert(len(filelist) == ${N_JOBS})
+
+perf_tot = 0
+for f in filelist:
+    a = h5py.File(f,'r')
+    perf_tot += 1. / a['L1/search/run_time'][0]
+
+fp = open('no_hp_perf_num_2.dat', 'w')
 print >> fp, perf_tot
 fp.close()
 
@@ -165,7 +165,7 @@ mkdir log
 echo "Running test on $1 cores"
 echo
 # USE THIS SETTING WHEN DOING A PRODUCTION BENCHMARK
-export NSTEPS=75000
+export NSTEPS=40000
 
 # USE THIS SETTING IF WANTING TO TEST THE CODE IS FUNCTIONING
 #export NSTEPS=200
