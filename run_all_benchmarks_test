@@ -243,29 +243,41 @@ echo
 
 /usr/bin/python2.7 - <<EOF
 import numpy
-pycbc_1A = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_1.dat')[()]
-pycbc_1B = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_2.dat')[()]
-pycbc_2A = numpy.loadtxt('pycbc_benchmark/w_hp_perf_num_1.dat')[()]
-pycbc_2B = numpy.loadtxt('pycbc_benchmark/w_hp_perf_num_2.dat')[()]
+try:
+    pycbc_1A = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_1.dat')[()]
+    pycbc_1B = numpy.loadtxt('pycbc_benchmark/no_hp_perf_num_2.dat')[()]
+    pycbc_2A = numpy.loadtxt('pycbc_benchmark/w_hp_perf_num_1.dat')[()]
+    pycbc_2B = numpy.loadtxt('pycbc_benchmark/w_hp_perf_num_2.dat')[()]
+    for val in [pycbc_1A, pycbc_1B, pycbc_2A, pycbc_2B]:
+        assert(type(val) == numpy.float64)
+        assert(val > 0.)
+except:
+    print "CANNOT READ PYCBC BENCHMARKS. FAILURE"
+    raise
 
-waveform_1 = numpy.loadtxt("waveform_benchmark/TD-wf-bench/benchmark_${1}.dat")
-waveform_2 = numpy.loadtxt("waveform_benchmark/TD-wf-bench/benchmark_${2}.dat")
+try:
 
-lalinference_1 = numpy.loadtxt('lalinference_benchmark/no_hp_benchmark.dat')
-lalinference_2 = numpy.loadtxt('lalinference_benchmark/w_hp_benchmark.dat')
+    waveform_1 = numpy.loadtxt("waveform_benchmark/TD-wf-bench/benchmark_${1}.dat")[()]
+    waveform_2 = numpy.loadtxt("waveform_benchmark/TD-wf-bench/benchmark_${2}.dat")[()]
+    for val in [waveform_1, waveform_2]:
+        assert(type(val) == numpy.float64)
+        assert(val > 0.)
+except:
+    print "CANNOT READ WAVEFORM BENCHMARKS. FAILURE"
+    raise
 
-print "THIS IS THE BIT THAT NEED FINALIZING. HERE ARE THE CURRENT NUMBERS"
+try:
+    lalinference_1 = numpy.loadtxt('lalinference_benchmark/no_hp_benchmark.dat')[()]
+    lalinference_2 = numpy.loadtxt('lalinference_benchmark/w_hp_benchmark.dat')[()]
+    for val in [lalinference_1, lalinference_2]:
+        assert(type(val) == numpy.float64)
+        assert(val > 0.)
+except:
+    print "CANNOT READ INFERENCE BENCHMARKS. FAILURE"
+    raise
 
-print "pycbc_1A", pycbc_1A
-print "pycbc_1B", pycbc_1B
-print "pycbc_2A", pycbc_2A
-print "pycbc_2B", pycbc_2B
-
-print "waveform_1", waveform_1
-print "waveform_2", waveform_2
-
-print "lalinference_1", lalinference_1
-print "lalinference_2", lalinference_2
+print
+print "TEST BENCHMARK RUN RAN SUCCESSFULLY!"
 
 EOF
 
