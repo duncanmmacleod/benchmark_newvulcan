@@ -278,9 +278,9 @@ print
 print "FINAL BENCHMARK FIGURES FOLLOW"
 print
 
-norm_pycbc = 0.022060000000000003
-norm_waveform = 0.000181422351233672
-norm_lalinf = 0.0639
+norm_pycbc = 0.022060000000000003 / 32.
+norm_waveform = 0.000181422351233672 / 32.
+norm_lalinf = 0.0639 / 32.
 
 print "FOM_pycbc", max(pycbc_1A+pycbc_1B, pycbc_2A+pycbc_2B) / norm_pycbc
 
