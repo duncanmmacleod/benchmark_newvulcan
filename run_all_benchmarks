@@ -4,6 +4,15 @@ set -e
 echo "RUNNING BENCHMARK WITH $1 PHYSICAL CORES AND $2 VIRTUAL CORES"
 echo
 
+mkdir system_details
+cd system_details
+lscpu &> cpu.dat
+head -n1 /proc/meminfo &> memsize.dat
+ls /dev/disk/by-id | grep -v -- -part &> disks.dat
+cat /etc/os-release &> os.dat
+uname -rm &> kernel.dat
+cd ..
+
 mkdir pycbc_benchmark
 cd pycbc_benchmark
 mkdir log
@@ -280,7 +289,7 @@ print
 
 norm_pycbc = 0.022060000000000003 / 32.
 norm_waveform = 0.000181422351233672 / 32.
-norm_lalinf = 0.0639 / 32.
+norm_lalinf = 0.00639 / 32.
 
 print "FOM_pycbc", max(pycbc_1A+pycbc_1B, pycbc_2A+pycbc_2B) / norm_pycbc
 
