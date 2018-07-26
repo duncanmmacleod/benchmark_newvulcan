@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+if [ -z "${1}" ]; then echo "Must supply number of physical cores"; exit 1; fi
+
+if [ -z "${2}" ]; then echo "Must supply number of logical cores"; exit 1; fi
+
 echo "RUNNING BENCHMARK WITH $1 PHYSICAL CORES AND $2 VIRTUAL CORES"
 echo
 
@@ -296,6 +300,18 @@ print "FOM_pycbc", max(pycbc_1A+pycbc_1B, pycbc_2A+pycbc_2B) / norm_pycbc
 print "FOM_waveform", max(1./waveform_1, 1./waveform_2) / norm_waveform
 
 print "FOM_lalinference", lalinference_1 / norm_lalinf
+
+print
+print "Also writing figures to RESULTS.dat"
+
+fp = open('RESULTS.dat', 'w')
+
+print >>fp, "FOM_pycbc", max(pycbc_1A+pycbc_1B, pycbc_2A+pycbc_2B) / norm_pycbc
+
+print >>fp, "FOM_waveform", max(1./waveform_1, 1./waveform_2) / norm_waveform
+
+print >>fp, "FOM_lalinference", lalinference_1 / norm_lalinf
+
 
 EOF
 

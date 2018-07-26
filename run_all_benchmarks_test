@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+if [ -z "${1}" ]; then echo "Must supply number of physical cores"; exit 1; fi
+
+if [ -z "${2}" ]; then echo "Must supply number of logical cores"; exit 1; fi
+
 echo "RUNNING BENCHMARK WITH $1 PHYSICAL CORES AND $2 VIRTUAL CORES"
 echo
 
