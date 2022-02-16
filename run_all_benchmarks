@@ -3,6 +3,7 @@
 set -e
 
 HERE=$(pwd)
+RUN_DIR="${HERE}/$(hostname -f)"
 
 # get arguments
 phys_cores=$1
@@ -20,58 +21,78 @@ ls /dev/disk/by-id | grep -v -- -part &> system_details/disks.dat
 cat /etc/os-release &> system_details/os.dat
 uname -rm &> system_details/kernel.dat
 
-# software setup
+# -- setup --------------------------------------------------------------------
+
+# -- software setup
+
 echo -e "Setting up software environment\n"
 CONDA=$(which mamba || which conda)
-export PREFIX="${HERE}/env"
-${CONDA} create \
-	--override-channels \
-	--channel conda-forge \
-	--prefix ${PREFIX} \
-	--quiet \
-	--yes \
-	python=3.9 \
-	lalsuite=7.3 \
-	mpi4py \
-	openmpi \
-	pycbc=1.18.3 \
-&> ${PREFIX}/conda-create.log
+#export PREFIX="/var/tmp/$(whoami)/benchmark-env"
+export PREFIX="${HERE}/benchmark-env"
+if [ ! -f ${PREFIX}/conda-meta/history ]; then
+	${CONDA} create \
+		--override-channels \
+		--channel conda-forge \
+		--prefix ${PREFIX} \
+		--quiet \
+		--yes \
+		python=3.9 \
+		lalsuite=7.3 \
+		mpi4py \
+		openmpi \
+		pycbc=1.18.3 \
+	&> ${HERE}/conda-create.log
+fi
 
-# SETUP FOR PYCBC BENCHMARK
-echo "Setting up PyCBC benchmark"
-echo
+# -- download data
 
-mkdir -p pycbc_benchmark/log
-cd pycbc_benchmark
+DATA_DIR=${HERE}/data
+pushd ${DATA_DIR}
 
 # download SEOBNR ROM
-#curl -LO \
-#	https://git.ligo.org/lscsoft/lalsuite-extra/-/raw/master/data/lalsimulation/SEOBNRv4ROM_v2.0.hdf5 \
-#	2> log/curl-seobnr-rom.log
+if ! (echo "256f33aecada770b871750227fa87749  SEOBNRv4ROM_v2.0.hdf5" | md5sum -c --status -); then
+	curl -LO \
+		https://git.ligo.org/lscsoft/lalsuite-extra/-/raw/master/data/lalsimulation/SEOBNRv4ROM_v2.0.hdf5 \
+		2> log/curl-seobnr-rom.log
+fi
 export LAL_DATA_PATH="$(pwd)"
 
 # download template bank (XML)
-#curl -LO \
-#	https://raw.githubusercontent.com/ligo-cbc/pycbc-config/master/O2/bank/H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz \
-#	2> log/curl-bank.log
+if ! (echo "4fa39669827b7f181b1b7359a8088ce5  H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz" | md5sum -c --status -); then
+	curl -LO \
+		https://raw.githubusercontent.com/ligo-cbc/pycbc-config/master/O2/bank/H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz \
+		2> log/curl-bank.log
+fi
 
 # download input data
-#curl -LO \
-#	https://losc.ligo.org/archive/data/O1/1126170624/L-L1_LOSC_4_V1-1126256640-4096.gwf \
-#	2> log/curl-losc-data.log
+if ! (echo "869f6ae617520269399cb5e3a271ebd9  L-L1_LOSC_4_V1-1126256640-4096.gwf" | md5sum -c --status -); then
+	curl -LO \
+		https://losc.ligo.org/archive/data/O1/1126170624/L-L1_LOSC_4_V1-1126256640-4096.gwf \
+		2> log/curl-losc-data.log
+fi
+
+popd
+
+# -- pycbc benchmark
+
+echo "Setting up PyCBC benchmark"
+echo
+
+mkdir -p ${RUN_DIR}/pycbc_benchmark/log
+pushd ${RUN_DIR}/pycbc_benchmark
 
 # convert template bank to HDF5
 rm -rf H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.hdf
 ${PREFIX}/bin/pycbc_coinc_bank2hdf \
-	--bank-file H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz \
+	--bank-file ${DATA_DIR}/H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz \
 	--output-file H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.hdf \
 	&> log/bank2hdf.log
 export SCHEME=cpu
 
 # Use this if running the production benchmark
-#export NTEMPLATES=15000
+export NTEMPLATES=15000
 # Use this if just wanting to test the benchmark
-export NTEMPLATES=100
+#export NTEMPLATES=100
 
 # Run this after setting NTEMPLATES. If NTEMPLATES changes this must be rerun.
 rm -f H1L1-SPLITBANK_*.hdf
@@ -87,10 +108,77 @@ mv tmp.hdf H1L1-SPLITBANK_0.hdf
 
 export N_JOBS=${log_cores}
 
+popd
+
+# -- waveform benchmark
+
+echo "Setting up waveform benchmark"
+echo
+
+mkdir -p ${RUN_DIR}/waveform_benchmark
+pushd ${RUN_DIR}/waveform_benchmark
+mkdir -p log
+
+if [ ! -d ${DATA_DIR}/TD-wf-bench ]; then
+	pushd ${DATA_DIR}
+	git clone https://git.ligo.org/duncanmmacleod/TD-wf-bench.git --branch python3 2> log/gitclone.log
+	popd
+fi
+
+popd
+
+# -- lalinference benchmark
+
+echo "Setting up lalinference benchmark"
+echo
+
+mkdir -p ${RUN_DIR}/lalinference_benchmark
+pushd ${RUN_DIR}/lalinference_benchmark
+
+# Generate an injection file
+${PREFIX}/bin/lalapps_inspinj \
+	--gps-start-time 441417609 \
+	--gps-end-time 441417639 \
+	--m-distr componentMass \
+	--min-mass1 5 \
+	--min-mass2 5 \
+	--max-mass1 5 \
+	--max-mass2 5 \
+	--max-mtotal 10 \
+	--i-distr uniform \
+	--waveform IMRPhenomPv2pseudoFourPN \
+	--amp-order 0 \
+	--l-distr random \
+	--f-lower 20 \
+	--t-distr uniform \
+	--time-step 30 \
+	--disable-spin \
+	--o injections.xml \
+	--snr-distr volume \
+	--ifos H1,L1,V1 \
+	--ligo-fake-psd LALAdLIGO \
+	--virgo-fake-psd LALAdVirgo \
+	--min-snr 20 \
+	--max-snr 20 \
+	--ligo-start-freq 20 \
+	--virgo-start-freq 20 \
+;
+
+#create directory needed to use the ROQ data and prepare necessary files
+mkdir -p ROQdata
+mkdir -p log
+popd
+
+# -- run ----------------------------------------------------------------------
+
+export OMP_NUM_THREADS=1
+
+# -- PyCBC
+
 echo "Running PyCBC benchmarks"
 echo
 
-export OMP_NUM_THREADS=1
+pushd ${RUN_DIR}/pycbc_benchmark
 
 echo "Test 1 on ${log_cores} cores"
 echo
@@ -137,7 +225,7 @@ ${PREFIX}/bin/pycbc_inspiral \
 	--trig-end-time 1126260000 \
 	--output OUTPUTSEOB_${IDX}.hdf \
 	--bank-file H1L1-SPLITBANK_0.hdf \
-	--frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf \
+	--frame-files ${DATA_DIR}/L-L1_LOSC_4_V1-1126256640-4096.gwf \
 	--channel-name L1:LOSC-STRAIN \
 	&> log/test1_${IDX}.log &
 done
@@ -189,7 +277,7 @@ ${PREFIX}/bin/pycbc_inspiral \
 	--trig-end-time 1126260000 \
 	--output OUTPUTF2_${IDX}.hdf \
 	--bank-file H1L1-SPLITBANK_0.hdf \
-	--frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf \
+	--frame-files ${DATA_DIR}/L-L1_LOSC_4_V1-1126256640-4096.gwf \
 	--channel-name L1:LOSC-STRAIN \
 	&> log/test2_${IDX}.log &
 done
@@ -218,8 +306,6 @@ EOF
 export N_JOBS=${phys_cores}
 
 rm -f *OUTPUT*
-
-export OMP_NUM_THREADS=1
 
 echo "Test 1 on ${phys_cores} cores"
 echo
@@ -266,14 +352,12 @@ ${PREFIX}/bin/pycbc_inspiral \
 	--trig-end-time 1126260000 \
 	--output OUTPUTSEOB_${IDX}.hdf \
 	--bank-file H1L1-SPLITBANK_0.hdf \
-	--frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf \
+	--frame-files ${DATA_DIR}/L-L1_LOSC_4_V1-1126256640-4096.gwf \
 	--channel-name L1:LOSC-STRAIN \
 	&> log/test3_${IDX}.log &
 done
 
 wait
-
-export OMP_NUM_THREADS=1
 
 echo "Test 2 on ${phys_cores} cores"
 echo
@@ -320,7 +404,7 @@ ${PREFIX}/bin/pycbc_inspiral \
 	--trig-end-time 1126260000 \
 	--output OUTPUTF2_${IDX}.hdf \
 	--bank-file H1L1-SPLITBANK_0.hdf \
-	--frame-files L-L1_LOSC_4_V1-1126256640-4096.gwf \
+	--frame-files ${DATA_DIR}/L-L1_LOSC_4_V1-1126256640-4096.gwf \
 	--channel-name L1:LOSC-STRAIN \
 	&> log/test4_${IDX}.log &
 done
@@ -347,77 +431,36 @@ for tag, outf in (
     Path(outf).write_text(str(perf_tot))
 EOF
 
-cd ..
+popd
 
-mkdir -p waveform_benchmark
-cd waveform_benchmark
+# -- waveform
 
-echo "Setting up waveform benchmark"
-mkdir -p log
-rm -rf TD-wf-bench
-git clone https://git.ligo.org/duncanmmacleod/TD-wf-bench.git 2> log/gitclone.log
-cd TD-wf-bench
-git checkout --quiet python3
 echo "Running waveform benchmark"
 echo
+
+pushd ${RUN_DIR}/waveform_benchmark
+
 # REMOVE SMALL FOR THE FULL BENCHMARK
-./wf_bench.sh ${phys_cores}
+${DATA_DIR}/TD-wf-bench/wf_bench.sh ${phys_cores}
 echo
-./wf_bench.sh ${log_cores}
+${DATA_DIR}/TD-wf-bench/wf_bench.sh ${log_cores}
 echo
-cd ../..
 
-mkdir -p lalinference_benchmark
-cd lalinference_benchmark
-echo "Setting up lalinference benchmark"
-echo
-# Generate an injection file
-${PREFIX}/bin/lalapps_inspinj \
-	--gps-start-time 441417609 \
-	--gps-end-time 441417639 \
-	--m-distr componentMass \
-	--min-mass1 5 \
-	--min-mass2 5 \
-	--max-mass1 5 \
-	--max-mass2 5 \
-	--max-mtotal 10 \
-	--i-distr uniform \
-	--waveform IMRPhenomPv2pseudoFourPN \
-	--amp-order 0 \
-	--l-distr random \
-	--f-lower 20 \
-	--t-distr uniform \
-	--time-step 30 \
-	--disable-spin \
-	--o injections.xml \
-	--snr-distr volume \
-	--ifos H1,L1,V1 \
-	--ligo-fake-psd LALAdLIGO \
-	--virgo-fake-psd LALAdVirgo \
-	--min-snr 20 \
-	--max-snr 20 \
-	--ligo-start-freq 20 \
-	--virgo-start-freq 20 \
-;
+popd
 
-#create directory needed to use the ROQ data and prepare necessary files
-mkdir -p ROQdata
-mkdir -p log
-# Not needed while we are not testing ROQ
-#lalinference_datadump --L1-flow 20.0 --approx IMRPhenomPv2pseudoFourPN --psdlength 1024 --V1-timeslide 0 --V1-cache LALSimAdVirgo --chirpmass-max 6.170374 --inj injections.xml --comp-max 21.9986477179 --adapt-temps  --srate 4096.0 --event 0 --V1-fhigh 2047.96875 --neff 500 --seglen 32.0 --L1-channel L1:LDAS-STRAIN --L1-fhigh 2047.96875 --H1-timeslide 0 --trigtime 441417609 --comp-min 1.49140053129 --psdstart 441416535.0 --H1-cache LALSimAdLIGO --progress --H1-channel H1:LDAS-STRAIN --V1-channel V1:h_16384Hz --tol 1.0  --disable-spin  --V1-flow 20.0 --fref 100 --H1-fhigh 2047.96875 --L1-cache LALSimAdLIGO --amporder 0 --randomseed 1829391048 --dataseed -8975086 --L1-timeslide 0 --q-min 0.125 --chirpmass-min 3.346569 --H1-flow 20.0 --outfile ROQdata/data-dump  --data-dump  --ifo V1  --ifo H1  --ifo L1  &> log/lidatadump.log
-#lalapps_compute_roq_weights -B /ROQ_data/IMRPhenomPv2/32s  -t 0.1  -T 0.000172895418228  --seglen 32.0  --fLow 20.0  --ifo V1  --fHigh 2047.96875  --data ROQdata/data-dumpV1-freqDataWithInjection.dat  --psd ROQdata/data-dumpV1-PSD.dat  --out ROQdata/ &> log/liroqweights1.dat
-#lalapps_compute_roq_weights -B /ROQ_data/IMRPhenomPv2/32s  -t 0.1  -T 0.000172895418228  --seglen 32.0  --fLow 20.0  --ifo L1  --fHigh 2047.96875  --data ROQdata/data-dumpL1-freqDataWithInjection.dat  --psd ROQdata/data-dumpL1-PSD.dat  --out ROQdata/ &> log/liroqweights2.dat
-#lalapps_compute_roq_weights -B /ROQ_data/IMRPhenomPv2/32s  -t 0.1  -T 0.000172895418228  --seglen 32.0  --fLow 20.0  --ifo H1  --fHigh 2047.96875  --data ROQdata/data-dumpH1-freqDataWithInjection.dat  --psd ROQdata/data-dumpH1-PSD.dat  --out ROQdata/ &> log/liroqweights3.dat
+# -- lalinference
 
 echo "Running test on ${phys_cores} cores"
 echo
+
+pushd ${RUN_DIR}/lalinference_benchmark
+
 # USE THIS SETTING WHEN DOING A PRODUCTION BENCHMARK
 export NSTEPS=40000
 
 # USE THIS SETTING IF WANTING TO TEST THE CODE IS FUNCTIONING
 #export NSTEPS=200
 
-export OMP_NUM_THREADS=1
 TIMEFORMAT=%R
 
 rm -rf TEST_${phys_cores}
@@ -496,7 +539,6 @@ cd ..
 echo "Running test on ${log_cores} cores"
 echo
 # This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
-export OMP_NUM_THREADS=1
 TIMEFORMAT=%R
 
 rm -rf TEST_${log_cores}
@@ -572,11 +614,13 @@ for i in range(${log_cores}):
 Path('../w_hp_benchmark.dat').write_text(str(total_work))
 EOF
 
-cd ..
-cd ..
+popd
+
+# -- summary ------------------------------------------------------------------
 
 echo "SUMMARIZING"
 echo
+cd ${RUN_DIR}
 
 ${PREFIX}/bin/python - <<EOF
 import numpy
@@ -591,8 +635,8 @@ for val in [pycbc_1A, pycbc_1B, pycbc_2A, pycbc_2B]:
     assert val > 0.
 
 # load waveform benchmarks
-waveform_1 = numpy.loadtxt("waveform_benchmark/TD-wf-bench/benchmark_${phys_cores}.dat")[()]
-waveform_2 = numpy.loadtxt("waveform_benchmark/TD-wf-bench/benchmark_${log_cores}.dat")[()]
+waveform_1 = numpy.loadtxt("waveform_benchmark/benchmark_${phys_cores}.dat")[()]
+waveform_2 = numpy.loadtxt("waveform_benchmark/benchmark_${log_cores}.dat")[()]
 for val in [waveform_1, waveform_2]:
     assert type(val) == numpy.float64
     assert val > 0.
