@@ -10,8 +10,17 @@ phys_cores=$1
 shift 1 || { echo "Must supply number of physical cores" 1>&2; exit 1; }
 log_cores=$1
 shift 1 || { echo "Must supply number of logical cores" 1>&2; exit 1; }
+is_test=$1
 
-echo -e "RUNNING BENCHMARK WITH ${phys_cores} PHYSICAL CORES AND ${log_cores} VIRTUAL CORES\n"
+echo "---------- IGWN Benchmark ----------"
+echo "Physical cores: ${phys_cores}"
+echo "Logical cores:  ${log_cores}"
+echo -n "Test mode:      "
+if [[ "${is_test}" == "test" ]]; then
+	echo TRUE
+else
+	echo FALSE
+fi
 
 # system details
 mkdir -p system_details
@@ -23,9 +32,11 @@ uname -rm &> system_details/kernel.dat
 
 # -- setup --------------------------------------------------------------------
 
+echo "-- Setup --------------------"
+
 # -- software setup
 
-echo -e "Setting up software environment\n"
+echo "Setting up software environment"
 CONDA=$(which mamba || which conda)
 #export PREFIX="/var/tmp/$(whoami)/benchmark-env"
 export PREFIX="${HERE}/benchmark-env"
@@ -47,10 +58,12 @@ fi
 # -- download data
 
 DATA_DIR=${HERE}/data
-pushd ${DATA_DIR}
+mkdir -p ${DATA_DIR}
+pushd ${DATA_DIR} 1>/dev/null
+mkdir -p log
 
 # download SEOBNR ROM
-if ! (echo "256f33aecada770b871750227fa87749  SEOBNRv4ROM_v2.0.hdf5" | md5sum -c --status -); then
+if ! (echo "256f33aecada770b871750227fa87749  SEOBNRv4ROM_v2.0.hdf5" | md5sum -c --status - 2>/dev/null); then
 	curl -LO \
 		https://git.ligo.org/lscsoft/lalsuite-extra/-/raw/master/data/lalsimulation/SEOBNRv4ROM_v2.0.hdf5 \
 		2> log/curl-seobnr-rom.log
@@ -58,28 +71,27 @@ fi
 export LAL_DATA_PATH="$(pwd)"
 
 # download template bank (XML)
-if ! (echo "4fa39669827b7f181b1b7359a8088ce5  H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz" | md5sum -c --status -); then
+if ! (echo "4fa39669827b7f181b1b7359a8088ce5  H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz" | md5sum -c --status - 2>/dev/null); then
 	curl -LO \
 		https://raw.githubusercontent.com/ligo-cbc/pycbc-config/master/O2/bank/H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.xml.gz \
 		2> log/curl-bank.log
 fi
 
 # download input data
-if ! (echo "869f6ae617520269399cb5e3a271ebd9  L-L1_LOSC_4_V1-1126256640-4096.gwf" | md5sum -c --status -); then
+if ! (echo "869f6ae617520269399cb5e3a271ebd9  L-L1_LOSC_4_V1-1126256640-4096.gwf" | md5sum -c --status - 2>/dev/null); then
 	curl -LO \
 		https://losc.ligo.org/archive/data/O1/1126170624/L-L1_LOSC_4_V1-1126256640-4096.gwf \
 		2> log/curl-losc-data.log
 fi
 
-popd
+popd 1>/dev/null
 
 # -- pycbc benchmark
 
 echo "Setting up PyCBC benchmark"
-echo
 
 mkdir -p ${RUN_DIR}/pycbc_benchmark/log
-pushd ${RUN_DIR}/pycbc_benchmark
+pushd ${RUN_DIR}/pycbc_benchmark 1>/dev/null
 
 # convert template bank to HDF5
 rm -rf H1L1-HYPERBANK_SEOBNRv4v2_VARFLOW_THORNE-1163174417-604800.hdf
@@ -89,10 +101,11 @@ ${PREFIX}/bin/pycbc_coinc_bank2hdf \
 	&> log/bank2hdf.log
 export SCHEME=cpu
 
-# Use this if running the production benchmark
-export NTEMPLATES=15000
-# Use this if just wanting to test the benchmark
-#export NTEMPLATES=100
+if [[ "${is_test}" == "test" ]]; then
+	export NTEMPLATES=100
+else
+	export NTEMPLATES=15000
+fi
 
 # Run this after setting NTEMPLATES. If NTEMPLATES changes this must be rerun.
 rm -f H1L1-SPLITBANK_*.hdf
@@ -108,32 +121,30 @@ mv tmp.hdf H1L1-SPLITBANK_0.hdf
 
 export N_JOBS=${log_cores}
 
-popd
+popd 1>/dev/null
 
 # -- waveform benchmark
 
 echo "Setting up waveform benchmark"
-echo
 
 mkdir -p ${RUN_DIR}/waveform_benchmark
-pushd ${RUN_DIR}/waveform_benchmark
+pushd ${RUN_DIR}/waveform_benchmark 1>/dev/null
 mkdir -p log
 
 if [ ! -d ${DATA_DIR}/TD-wf-bench ]; then
-	pushd ${DATA_DIR}
+	pushd ${DATA_DIR} 1>/dev/null
 	git clone https://git.ligo.org/duncanmmacleod/TD-wf-bench.git --branch python3 2> log/gitclone.log
-	popd
+	popd 1>/dev/null
 fi
 
-popd
+popd 1>/dev/null
 
 # -- lalinference benchmark
 
 echo "Setting up lalinference benchmark"
-echo
 
 mkdir -p ${RUN_DIR}/lalinference_benchmark
-pushd ${RUN_DIR}/lalinference_benchmark
+pushd ${RUN_DIR}/lalinference_benchmark 1>/dev/null
 
 # Generate an injection file
 ${PREFIX}/bin/lalapps_inspinj \
@@ -167,7 +178,7 @@ ${PREFIX}/bin/lalapps_inspinj \
 #create directory needed to use the ROQ data and prepare necessary files
 mkdir -p ROQdata
 mkdir -p log
-popd
+popd 1>/dev/null
 
 # -- run ----------------------------------------------------------------------
 
@@ -175,13 +186,11 @@ export OMP_NUM_THREADS=1
 
 # -- PyCBC
 
-echo "Running PyCBC benchmarks"
-echo
+echo "-- Running PyCBC Benchmark --"
 
-pushd ${RUN_DIR}/pycbc_benchmark
+pushd ${RUN_DIR}/pycbc_benchmark 1>/dev/null
 
 echo "Test 1 on ${log_cores} cores"
-echo
 for IDX in $(seq 1 ${N_JOBS}); do
 ${PREFIX}/bin/pycbc_inspiral \
 	--sgchisq-snr-threshold 6.0 \
@@ -233,7 +242,6 @@ done
 wait
 
 echo "Test 2 on ${log_cores} cores"
-echo
 for IDX in $(seq 1 ${N_JOBS}); do
 ${PREFIX}/bin/pycbc_inspiral \
 	--sgchisq-snr-threshold 6.0 \
@@ -308,7 +316,6 @@ export N_JOBS=${phys_cores}
 rm -f *OUTPUT*
 
 echo "Test 1 on ${phys_cores} cores"
-echo
 for IDX in $(seq 1 ${N_JOBS}); do
 ${PREFIX}/bin/pycbc_inspiral \
 	--sgchisq-snr-threshold 6.0 \
@@ -360,7 +367,6 @@ done
 wait
 
 echo "Test 2 on ${phys_cores} cores"
-echo
 for IDX in $(seq 1 ${N_JOBS}); do
 ${PREFIX}/bin/pycbc_inspiral \
 	--sgchisq-snr-threshold 6.0 \
@@ -431,35 +437,34 @@ for tag, outf in (
     Path(outf).write_text(str(perf_tot))
 EOF
 
-popd
+popd 1>/dev/null
 
 # -- waveform
 
-echo "Running waveform benchmark"
-echo
+echo "-- Running Waveform benchmark"
 
-pushd ${RUN_DIR}/waveform_benchmark
+pushd ${RUN_DIR}/waveform_benchmark 1>/dev/null
 
 # REMOVE SMALL FOR THE FULL BENCHMARK
+echo "Running test on ${phys_cores} cores"
 ${DATA_DIR}/TD-wf-bench/wf_bench.sh ${phys_cores}
-echo
-${DATA_DIR}/TD-wf-bench/wf_bench.sh ${log_cores}
-echo
+echo "Running test on ${log_cores} cores"
+${DATA_DIR}/TD-wf-bench/wf_bench.sh ${log_cores} --use-hwthread-cpus
 
-popd
+popd 1>/dev/null
 
 # -- lalinference
 
+echo "-- Running LALInference benchmark"
 echo "Running test on ${phys_cores} cores"
-echo
-
-pushd ${RUN_DIR}/lalinference_benchmark
+pushd ${RUN_DIR}/lalinference_benchmark 1>/dev/null
 
 # USE THIS SETTING WHEN DOING A PRODUCTION BENCHMARK
-export NSTEPS=40000
-
-# USE THIS SETTING IF WANTING TO TEST THE CODE IS FUNCTIONING
-#export NSTEPS=200
+if [[ "${is_test}" == "test" ]]; then
+	export NSTEPS=200
+else
+	export NSTEPS=40000
+fi
 
 TIMEFORMAT=%R
 
@@ -537,7 +542,6 @@ EOF
 cd ..
 
 echo "Running test on ${log_cores} cores"
-echo
 # This line is important! Without it some parts of the job can unexpectedly start using multiple threads!
 TIMEFORMAT=%R
 
@@ -614,12 +618,11 @@ for i in range(${log_cores}):
 Path('../w_hp_benchmark.dat').write_text(str(total_work))
 EOF
 
-popd
+popd 1>/dev/null
 
 # -- summary ------------------------------------------------------------------
 
 echo "SUMMARIZING"
-echo
 cd ${RUN_DIR}
 
 ${PREFIX}/bin/python - <<EOF
