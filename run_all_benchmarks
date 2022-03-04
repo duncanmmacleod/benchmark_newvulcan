@@ -131,11 +131,12 @@ mkdir -p ${RUN_DIR}/waveform_benchmark
 pushd ${RUN_DIR}/waveform_benchmark 1>/dev/null
 mkdir -p log
 
+pushd ${DATA_DIR} 1>/dev/null
 if [ ! -d ${DATA_DIR}/TD-wf-bench ]; then
-	pushd ${DATA_DIR} 1>/dev/null
 	git clone https://git.ligo.org/duncanmmacleod/TD-wf-bench.git --branch python3 2> log/gitclone.log
-	popd 1>/dev/null
 fi
+git pull --quiet 2> log/gitpull.log || echo "WARNING: Failed to update TD-wf-bench repo, it might be out-of-date" 1>&2
+popd 1>/dev/null
 
 popd 1>/dev/null
 
